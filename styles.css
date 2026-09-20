@@ -806,6 +806,7 @@ section {
 .trailer-marco {
   position: relative;
   width: 100%;
+  aspect-ratio: 16 / 9;
   border-radius: var(--radio-tarjeta);
   overflow: hidden;
   border: 1px solid var(--linea);
@@ -813,28 +814,11 @@ section {
 }
 
 .trailer-marco #trailer-player {
-  position: relative;
-  width: 100%;
-  padding-bottom: 56.25%;
-}
-
-.trailer-marco #trailer-player iframe {
   position: absolute;
   inset: 0;
-  width: 100% !important;
-  height: 100% !important;
-  border: 0;
 }
 
 .trailer-marco #trailer-player.portada {
-  padding-bottom: 0;
-  height: auto;
-}
-
-.trailer-marco #trailer-player.portada .portada-enlace {
-  display: block;
-  width: 100%;
-  aspect-ratio: 16 / 9;
   position: relative;
 }
 
