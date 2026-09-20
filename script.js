@@ -136,6 +136,8 @@ function crearTarjeta(item) {
     const img = document.createElement("img");
     img.src = `${IMG}${item.poster_path}`;
     img.alt = titulo;
+    img.width = 200;
+    img.height = 300;
     img.loading = "lazy";
     img.onerror = () => {
       img.style.display = "none";
@@ -565,7 +567,7 @@ function renderDetalle(d, media_type) {
     if (d.number_of_seasons) bloque("Temporadas", String(d.number_of_seasons));
     if (d.number_of_episodes) bloque("Episodios", String(d.number_of_episodes));
   }
-  if (media_type === "movie" && d.budget > 0) bloque("Presupuesto", `$${d.budget.toLocaleString("en-US")}`);
+  if (media_type === "movie" && d.budget > 0) bloque("Presupuesto", `$${new Intl.NumberFormat().format(d.budget)}`);
   DOM.modalExtra.replaceChildren(extra);
 
   const videos = (d.videos && d.videos.results) || [];
