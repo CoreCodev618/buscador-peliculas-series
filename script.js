@@ -30,6 +30,7 @@ const DOM = {
   estadoResultados: document.getElementById("estado-resultados"),
   btnCargarMas: document.getElementById("btn-cargar-mas"),
   gridFavoritos: document.getElementById("grid-favoritos"),
+  seccionFavoritos: document.getElementById("favoritos"),
   contadorFavoritos: document.getElementById("contador-favoritos"),
   vacioFavoritos: document.getElementById("vacio-favoritos"),
   navLinks: document.querySelectorAll(".nav-link[data-nav]"),
@@ -227,6 +228,12 @@ function ajustarHero(compacto) {
   document.querySelector(".hero").classList.toggle("compacto", compacto);
 }
 
+function establecerVista(vista) {
+  DOM.seccionTendencias.hidden = vista !== "inicio";
+  DOM.seccionResultados.hidden = vista !== "resultados";
+  DOM.seccionFavoritos.hidden = vista !== "favoritos";
+}
+
 async function cargarTendencias() {
   const signal = solicitarNueva();
   estado.modo = "tendencias";
@@ -234,6 +241,7 @@ async function cargarTendencias() {
   DOM.btnVerTodo.hidden = true;
   DOM.heroHint.hidden = true;
   ajustarHero(false);
+  establecerVista("inicio");
 
   try {
     const datos = await pedirTMDB("/trending/all/week", {}, signal);
@@ -260,8 +268,7 @@ async function ejecutarBusqueda(texto) {
 
   if (!q) {
     DOM.heroHint.hidden = true;
-    DOM.seccionResultados.hidden = true;
-    DOM.seccionTendencias.hidden = false;
+    establecerVista("inicio");
     ajustarHero(false);
     return;
   }
@@ -274,8 +281,7 @@ async function ejecutarBusqueda(texto) {
   DOM.btnCargarMas.hidden = true;
   DOM.heroHint.textContent = `Buscando «${q}»…`;
   DOM.heroHint.hidden = false;
-  DOM.seccionTendencias.hidden = true;
-  DOM.seccionResultados.hidden = false;
+  establecerVista("resultados");
   DOM.tituloResultados.textContent = `Resultados para «${q}»`;
   ajustarHero(true);
 
@@ -384,8 +390,7 @@ async function explorar(filtro, orden) {
   DOM.btnCargarMas.hidden = true;
   DOM.contadorResultados.hidden = true;
   DOM.heroHint.hidden = true;
-  DOM.seccionTendencias.hidden = true;
-  DOM.seccionResultados.hidden = false;
+  establecerVista("resultados");
   DOM.tituloResultados.textContent =
     tipo === "tv" ? "Series del catálogo" : "Películas del catálogo";
   ajustarHero(true);
@@ -785,8 +790,8 @@ DOM.navLinks.forEach((link) => {
     DOM.navLinks.forEach((l) => l.classList.remove("activo"));
 
     if (destino === "tendencias") {
-      DOM.seccionTendencias.scrollIntoView({ behavior: "smooth", block: "start" });
       cargarTendencias();
+      DOM.seccionTendencias.scrollIntoView({ behavior: "smooth", block: "start" });
     } else if (destino === "multi" || destino === "tv") {
       link.classList.add("activo");
       const chip = document.querySelector(`.chip[data-filtro="${destino}"]`);
@@ -796,7 +801,11 @@ DOM.navLinks.forEach((link) => {
       explorar(destino, estado.orden);
       DOM.seccionResultados.scrollIntoView({ behavior: "smooth", block: "start" });
     } else if (destino === "favoritos") {
-      DOM.gridFavoritos.scrollIntoView({ behavior: "smooth", block: "start" });
+      link.classList.add("activo");
+      ajustarHero(true);
+      establecerVista("favoritos");
+      renderizarFavoritos();
+      DOM.seccionFavoritos.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   });
 });
