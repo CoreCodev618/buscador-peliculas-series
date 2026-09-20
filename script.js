@@ -466,6 +466,25 @@ function renderizarFavoritos() {
     return;
   }
   lista.forEach((f) => DOM.gridFavoritos.appendChild(crearTarjeta(f)));
+  completarFavoritos();
+}
+
+async function completarFavoritos() {
+  const lista = obtenerFavoritos();
+  const incompletos = lista.filter((f) => !f.poster_path);
+  if (!incompletos.length) return;
+
+  for (const f of incompletos) {
+    try {
+      const d = await pedirTMDB(`/${f.media_type}/${f.id}`);
+      f.poster_path = d.poster_path || null;
+      f.title = tituloDe(d);
+      f.year = anioDe(d);
+      f.rating = d.vote_average || 0;
+    } catch {}
+  }
+  guardarFavoritos(lista);
+  renderizarFavoritos();
 }
 
 async function abrirDetalle(id, media_type) {
@@ -496,7 +515,14 @@ async function abrirDetalle(id, media_type) {
 
 function renderDetalle(d, media_type) {
   const titulo = tituloDe(d);
-  detalleActual = { id: d.id, media_type };
+  detalleActual = {
+    id: d.id,
+    media_type,
+    title: titulo,
+    year: anioDe(d),
+    rating: d.vote_average || 0,
+    poster_path: d.poster_path || null,
+  };
 
   DOM.modalPoster.src = d.poster_path ? `${IMG}${d.poster_path}` : "";
   DOM.modalPoster.alt = titulo;
@@ -823,7 +849,10 @@ DOM.modalFavorito.addEventListener("click", () => {
   const fake = {
     id: detalleActual.id,
     media_type: detalleActual.media_type,
-    title: detalleActual.titulo || DOM.modalTitulo.textContent,
+    title: detalleActual.title || DOM.modalTitulo.textContent,
+    year: detalleActual.year || "",
+    rating: detalleActual.rating || 0,
+    poster_path: detalleActual.poster_path || null,
   };
   alternarFavorito(fake, null);
 });
