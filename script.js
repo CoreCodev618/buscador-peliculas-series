@@ -1,6 +1,6 @@
 const API = "https://api.themoviedb.org/3";
 const IMG = "https://image.tmdb.org/t/p/w500";
-const LANG = "es-ES";
+const LANG = "es-MX";
 const CLAVE_PLACEHOLDER = "PEGA_AQUI_TU_API_KEY";
 
 const estado = {
@@ -45,12 +45,19 @@ const DOM = {
   modalFavorito: document.getElementById("modal-favorito"),
   textoFavorito: document.getElementById("favorito-texto"),
   modalTrailer: document.getElementById("modal-trailer"),
-  trailerIframe: document.getElementById("trailer-iframe"),
+  trailerPlayer: document.getElementById("trailer-player"),
+  trailerAviso: document.getElementById("trailer-aviso"),
+  trailerFallo: document.getElementById("trailer-fallo"),
+  trailerEnlace: document.getElementById("trailer-enlace"),
   toast: document.getElementById("toast"),
 };
 
 let detalleActual = null;
 let timerToast = null;
+let listaTrailers = [];
+let indiceTrailer = 0;
+let reproductorYt = null;
+let promesaYt = null;
 
 function claveValida() {
   return typeof TMDB_API_KEY === "string" && TMDB_API_KEY !== CLAVE_PLACEHOLDER;
@@ -214,12 +221,17 @@ function solicitarNueva() {
   return estado.controlador.signal;
 }
 
+function ajustarHero(compacto) {
+  document.querySelector(".hero").classList.toggle("compacto", compacto);
+}
+
 async function cargarTendencias() {
   const signal = solicitarNueva();
   estado.modo = "tendencias";
   mostrarEsqueletos(DOM.filaTendencias, 10);
   DOM.btnVerTodo.hidden = true;
   DOM.heroHint.hidden = true;
+  ajustarHero(false);
 
   try {
     const datos = await pedirTMDB("/trending/all/week", {}, signal);
@@ -248,6 +260,7 @@ async function ejecutarBusqueda(texto) {
     DOM.heroHint.hidden = true;
     DOM.seccionResultados.hidden = true;
     DOM.seccionTendencias.hidden = false;
+    ajustarHero(false);
     return;
   }
 
@@ -262,6 +275,7 @@ async function ejecutarBusqueda(texto) {
   DOM.seccionTendencias.hidden = true;
   DOM.seccionResultados.hidden = false;
   DOM.tituloResultados.textContent = `Resultados para «${q}»`;
+  ajustarHero(true);
 
   const ruta =
     estado.filtro === "movie"
@@ -372,6 +386,7 @@ async function explorar(filtro, orden) {
   DOM.seccionResultados.hidden = false;
   DOM.tituloResultados.textContent =
     tipo === "tv" ? "Series del catálogo" : "Películas del catálogo";
+  ajustarHero(true);
 
   try {
     const datos = await pedirTMDB(
@@ -459,7 +474,8 @@ async function abrirDetalle(id, media_type) {
   DOM.modalPoster.src = "";
   DOM.btnTrailer.hidden = true;
   DOM.modalTrailer.hidden = true;
-  DOM.trailerIframe.src = "";
+  listaTrailers = [];
+  resetReproductor();
   actualizarBotonFavoritoModal();
 
   try {
@@ -520,17 +536,89 @@ function renderDetalle(d, media_type) {
   DOM.modalExtra.replaceChildren(extra);
 
   const videos = (d.videos && d.videos.results) || [];
-  const trailer = videos.find(
-    (v) => v.site === "YouTube" && v.type === "Trailer"
-  ) || videos.find((v) => v.site === "YouTube");
-  if (trailer) {
+  listaTrailers = videos.filter((v) => v.site === "YouTube").map((v) => v.key);
+  indiceTrailer = 0;
+  if (listaTrailers.length) {
     DOM.btnTrailer.hidden = false;
-    DOM.btnTrailer.onclick = () => {
-      DOM.trailerIframe.src = `https://www.youtube-nocookie.com/embed/${trailer.key}`;
-      DOM.modalTrailer.hidden = false;
-      DOM.modalTrailer.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    };
+    DOM.btnTrailer.onclick = reproducirTrailer;
   }
+}
+
+function conseguirYT() {
+  if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
+  if (promesaYt) return promesaYt;
+  promesaYt = new Promise((resolve) => {
+    const previo = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      if (typeof previo === "function") previo();
+      resolve(window.YT);
+    };
+    const s = document.createElement("script");
+    s.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(s);
+  });
+  return promesaYt;
+}
+
+async function reproducirTrailer() {
+  if (!listaTrailers.length) return;
+  const YT = await conseguirYT();
+  DOM.modalTrailer.hidden = false;
+  DOM.trailerAviso.hidden = true;
+  DOM.trailerFallo.hidden = true;
+  DOM.modalTrailer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+  const clave = listaTrailers[Math.min(indiceTrailer, listaTrailers.length - 1)];
+  if (DOM.trailerPlayer.dataset.clave !== clave) {
+    if (reproductorYt) {
+      reproductorYt.destroy();
+      reproductorYt = null;
+    }
+    DOM.trailerPlayer.innerHTML = "";
+    DOM.trailerPlayer.dataset.clave = clave;
+  }
+
+  reproductorYt = new YT.Player("trailer-player", {
+    videoId: clave,
+    host: "https://www.youtube-nocookie.com",
+    playerVars: {
+      autoplay: 1,
+      playsinline: 1,
+      rel: 0,
+      modestbranding: 1,
+    },
+    events: {
+      onError: manejarErrorTrailer,
+    },
+  });
+}
+
+function manejarErrorTrailer(evento) {
+  const codigo = evento.data;
+  const siguiente = indiceTrailer + 1;
+  if ([101, 150, 153].includes(codigo) && siguiente < listaTrailers.length) {
+    indiceTrailer = siguiente;
+    reproducirTrailer();
+    return;
+  }
+  DOM.trailerAviso.textContent =
+    "Este tráiler no se puede reproducir dentro de la página ni en tu región.";
+  DOM.trailerEnlace.href = `https://www.youtube.com/watch?v=${listaTrailers[Math.min(indiceTrailer, listaTrailers.length - 1)]}`;
+  DOM.trailerAviso.hidden = false;
+  DOM.trailerFallo.hidden = false;
+}
+
+function resetReproductor() {
+  if (reproductorYt) {
+    try {
+      reproductorYt.destroy();
+    } catch {}
+    reproductorYt = null;
+  }
+  DOM.trailerPlayer.innerHTML = "";
+  delete DOM.trailerPlayer.dataset.clave;
+  DOM.trailerFallo.hidden = true;
+  DOM.trailerAviso.hidden = true;
 }
 
 function actualizarBotonFavoritoModal() {
@@ -545,7 +633,7 @@ function cerrarModal() {
   DOM.modal.hidden = true;
   document.body.style.overflow = "";
   DOM.modalTrailer.hidden = true;
-  DOM.trailerIframe.src = "";
+  resetReproductor();
   detalleActual = null;
 }
 
