@@ -56,8 +56,10 @@ let detalleActual = null;
 let timerToast = null;
 let listaTrailers = [];
 let indiceTrailer = 0;
+let intentoTrailer = 0;
 let reproductorYt = null;
 let promesaYt = null;
+let timerFallo = null;
 
 function claveValida() {
   return typeof TMDB_API_KEY === "string" && TMDB_API_KEY !== CLAVE_PLACEHOLDER;
@@ -538,49 +540,79 @@ function renderDetalle(d, media_type) {
   const videos = (d.videos && d.videos.results) || [];
   listaTrailers = videos.filter((v) => v.site === "YouTube").map((v) => v.key);
   indiceTrailer = 0;
+  intentoTrailer = 0;
   if (listaTrailers.length) {
     DOM.btnTrailer.hidden = false;
     DOM.btnTrailer.onclick = reproducirTrailer;
   }
 }
 
+const HOSTS_TRAILER = [
+  "https://www.youtube-nocookie.com",
+  "https://www.youtube.com",
+];
+
 function conseguirYT() {
   if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
   if (promesaYt) return promesaYt;
   promesaYt = new Promise((resolve) => {
+    let resuelto = false;
     const previo = window.onYouTubeIframeAPIReady;
     window.onYouTubeIframeAPIReady = () => {
       if (typeof previo === "function") previo();
-      resolve(window.YT);
+      if (!resuelto) {
+        resuelto = true;
+        resolve(window.YT);
+      }
     };
     const s = document.createElement("script");
     s.src = "https://www.youtube.com/iframe_api";
     document.head.appendChild(s);
+    setTimeout(() => {
+      if (!resuelto) {
+        resuelto = true;
+        resolve(window.YT && window.YT.Player ? window.YT : null);
+      }
+    }, 5000);
   });
   return promesaYt;
 }
 
 async function reproducirTrailer() {
   if (!listaTrailers.length) return;
-  const YT = await conseguirYT();
+  indiceTrailer = 0;
+  intentoTrailer = 0;
   DOM.modalTrailer.hidden = false;
   DOM.trailerAviso.hidden = true;
   DOM.trailerFallo.hidden = true;
   DOM.modalTrailer.scrollIntoView({ behavior: "smooth", block: "nearest" });
 
-  const clave = listaTrailers[Math.min(indiceTrailer, listaTrailers.length - 1)];
-  if (DOM.trailerPlayer.dataset.clave !== clave) {
-    if (reproductorYt) {
-      reproductorYt.destroy();
-      reproductorYt = null;
-    }
-    DOM.trailerPlayer.innerHTML = "";
-    DOM.trailerPlayer.dataset.clave = clave;
+  const YT = await conseguirYT();
+  if (!YT) {
+    mostrarPortadaTrailer();
+    return;
   }
+  crearReproductor();
+}
+
+function crearReproductor() {
+  if (reproductorYt) {
+    try {
+      reproductorYt.destroy();
+    } catch {}
+    reproductorYt = null;
+  }
+  DOM.trailerPlayer.classList.remove("portada");
+  DOM.trailerPlayer.innerHTML = "";
+  const clave = listaTrailers[Math.min(indiceTrailer, listaTrailers.length - 1)];
+  DOM.trailerPlayer.dataset.clave = clave;
+
+  clearTimeout(timerFallo);
+  timerFallo = setTimeout(mostrarPortadaTrailer, 4500);
 
   reproductorYt = new YT.Player("trailer-player", {
     videoId: clave,
-    host: "https://www.youtube-nocookie.com",
+    host: HOSTS_TRAILER[intentoTrailer % HOSTS_TRAILER.length],
     playerVars: {
       autoplay: 1,
       playsinline: 1,
@@ -588,22 +620,64 @@ async function reproducirTrailer() {
       modestbranding: 1,
     },
     events: {
+      onReady: () => clearTimeout(timerFallo),
       onError: manejarErrorTrailer,
     },
   });
 }
 
 function manejarErrorTrailer(evento) {
+  clearTimeout(timerFallo);
   const codigo = evento.data;
-  const siguiente = indiceTrailer + 1;
-  if ([101, 150, 153].includes(codigo) && siguiente < listaTrailers.length) {
-    indiceTrailer = siguiente;
-    reproducirTrailer();
+  const noIncrustable = [2, 5, 100, 101, 150, 153].includes(codigo);
+
+  if (noIncrustable && indiceTrailer + 1 < listaTrailers.length) {
+    indiceTrailer += 1;
+    crearReproductor();
     return;
   }
+  if (noIncrustable && intentoTrailer + 1 < HOSTS_TRAILER.length) {
+    intentoTrailer += 1;
+    crearReproductor();
+    return;
+  }
+  mostrarPortadaTrailer();
+}
+
+function mostrarPortadaTrailer() {
+  clearTimeout(timerFallo);
+  if (reproductorYt) {
+    try {
+      reproductorYt.destroy();
+    } catch {}
+    reproductorYt = null;
+  }
+  const clave = listaTrailers[Math.min(indiceTrailer, listaTrailers.length - 1)];
+
+  DOM.trailerPlayer.classList.add("portada");
+  DOM.trailerEnlace.href = `https://www.youtube.com/watch?v=${clave}`;
+
+  const enlace = document.createElement("a");
+  enlace.className = "portada-enlace";
+  enlace.href = DOM.trailerEnlace.href;
+  enlace.target = "_blank";
+  enlace.rel = "noopener";
+  enlace.setAttribute("aria-label", "Reproducir el tráiler en YouTube");
+
+  const img = document.createElement("img");
+  img.className = "portada-imagen";
+  img.src = `https://i.ytimg.com/vi/${clave}/hqdefault.jpg`;
+  img.alt = "Portada del tráiler";
+
+  const play = document.createElement("span");
+  play.className = "portada-play";
+  play.textContent = "Reproducir en YouTube";
+
+  enlace.append(img, play);
+  DOM.trailerPlayer.replaceChildren(enlace);
+
   DOM.trailerAviso.textContent =
-    "Este tráiler no se puede reproducir dentro de la página ni en tu región.";
-  DOM.trailerEnlace.href = `https://www.youtube.com/watch?v=${listaTrailers[Math.min(indiceTrailer, listaTrailers.length - 1)]}`;
+    "El tráiler no se pudo reproducir dentro de la página. Tocá la portada para verlo en YouTube.";
   DOM.trailerAviso.hidden = false;
   DOM.trailerFallo.hidden = false;
 }
@@ -615,10 +689,13 @@ function resetReproductor() {
     } catch {}
     reproductorYt = null;
   }
+  clearTimeout(timerFallo);
+  DOM.trailerPlayer.classList.remove("portada");
   DOM.trailerPlayer.innerHTML = "";
   delete DOM.trailerPlayer.dataset.clave;
   DOM.trailerFallo.hidden = true;
   DOM.trailerAviso.hidden = true;
+  intentoTrailer = 0;
 }
 
 function actualizarBotonFavoritoModal() {
